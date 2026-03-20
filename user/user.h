@@ -1,5 +1,14 @@
 struct stat;
 
+struct procinfo
+{
+    int pid;
+    int ppid;
+    int state;
+    uint64 sz;
+    char name[16];
+};
+
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -23,6 +32,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int trace(int);
+int procinfo(int, struct procinfo*);
 
 // ulib.c
 int stat(const char*, struct stat*);

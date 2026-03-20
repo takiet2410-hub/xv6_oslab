@@ -100,3 +100,55 @@ sys_trace(void)
   myproc()->trace_mask = mask;
   return 0;
 }
+
+uint64
+sys_procinfo(void)
+{
+  extern struct proc proc[];
+  int pid;
+  uint64 addr;
+  struct procinfo info;
+  struct proc *p;
+
+  // Lấy 2 arguments: pid (int) và pointer tới struct procinfo
+  argint(0, &pid);
+  argaddr(1, &addr);
+
+  // Duyệt proc[] y hệt kill() trong proc.c
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->pid == pid && p->state != UNUSED) {
+      // Copy thông tin ra local variable TRONG KHI giữ lock
+      info.pid   = p->pid;
+      info.state = p->state;
+      info.sz    = p->sz;
+      memmove(info.name, p->name, sizeof(p->name));
+
+      // Lấy ppid: cần wait_lock để đọc p->parent an toàn
+      // Nhưng KHÔNG acquire wait_lock khi đang giữ p->lock
+      // (deadlock risk: lock ordering phải là wait_lock -> p->lock)
+      // Cách an toàn: đọc parent pointer tạm, release p->lock trước
+      struct proc *parent = p->parent;
+      release(&p->lock);  // ← PHẢI release TRƯỚC khi copyout
+
+      // Sau khi release, lấy ppid
+      if(parent != 0) {
+        acquire(&parent->lock);
+        info.ppid = parent->pid;
+        release(&parent->lock);
+      } else {
+        info.ppid = 0;
+      }
+
+      // copyout về user space — KHÔNG được giữ spinlock khi gọi hàm này
+      if(copyout(myproc()->pagetable, addr,
+                 (char*)&info, sizeof(info)) < 0)
+        return -1;
+
+      return 0;
+    }
+    release(&p->lock);
+  }
+
+  return -1;  // pid không tìm thấy
+}
