@@ -2,65 +2,62 @@
 #include "kernel/param.h"
 #include "user/user.h"
 
+#define MAXLINE 512
+
 int main(int argc, char *argv[])
 {
-    if(argc<2)
+    if(argc < 2)
     {
-        fprintf(2,"Usage: xargs command [args...]\n");
-        exit(1);
-    }
-    
-    if(argc>=MAXARG)
-    {
-        fprintf(2,"xargs: too many arguments\n");
+        fprintf(2, "Usage: xargs command [args...]\n");
         exit(1);
     }
 
-    char buf[512];
     char *args[MAXARG];
-    
-    int i;
-    int base=argc-1;
 
-    for(i=1;i<argc;i++) args[i-1]=argv[i];
-    int n=0;
+    int base = 0;
+    for(int i = 1; i < argc; i++)
+    {
+        args[base++] = argv[i];
+    }
+
+    char buf[MAXLINE];
+    int len = 0;
     char c;
 
-    void run()
+    while(read(0, &c, 1) == 1)
     {
-        buf[n]=0;
-        args[base]=buf;
-        args[base+1]=0;
+        if(c == '\n')
+        {
+            buf[len] = 0;
 
-        if(fork()==0)
-        {
-            exec(args[0], args);
-            fprintf(2,"exec %s failed\n",args[0]);
-            exit(1);
-        }
-        else wait(0);
-    }
-
-    while(read(0,&c,1)==1)
-    {
-        if(c=='\n')
-        {
-            run();
-            n=0;
-        }
-        else 
-        {
-            if(n<sizeof(buf)-1)
+            char *line = malloc(len + 1);
+            if(line == 0)
             {
-                buf[n++]=c;
+                fprintf(2, "malloc failed\n");
+                exit(1);
             }
-            else{
-                run();
-                n=0;
+            strcpy(line, buf);
+
+            args[base] = line;
+            args[base + 1] = 0;
+
+            if(fork() == 0)
+            {
+                exec(args[0], args);
+                fprintf(2, "exec %s failed\n", args[0]);
+                exit(1);
             }
+            wait(0);
+
+            len = 0; // reset buffer
+        }
+        else
+        {
+            if(len < MAXLINE - 1)
+                buf[len++] = c;
         }
     }
-    if(n>0) run();
-    
+
     exit(0);
 }
+
